@@ -1,0 +1,28 @@
+youtube-dl -f bestaudio --exec 'mv {} path' URL
+
+
+ffmpeg -i in.mp3 -codec copy  -metadata title='title' -metadata artist='artist' -metadata genre='genre' -metadata comment='youtube'  out.mp3
+
+
+====== Bookmarks ======
+
+table: moz_bookmarks
+
+id type fk parent position title
+3   2   {null}  1   1   Bookmarks Toolbar
+43  2   {null}  3   0   tmp
+149 2   {null}  43  5   music
+646 2   {null}  149 0   deep house
+1107    1   1016    646 0   ▶ Hunter/Game & FreakMe - Sea Of Love - YouTube
+
+
+type 1 is a bookmark
+type 2 is a folder
+fk refers to moz_places.id
+parent refers to moz_bookmarks.id parent folder
+position is sequence starting from 0.
+
+select id, url from moz_places where id = 1016
+
+id      url
+1016    http://www.youtube.com/watch?v=XDxEFoUK-OQ
