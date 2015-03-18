@@ -116,12 +116,18 @@ def print_error_info(info):
     print
 
 
+def print_errors(errors):
+    if len(errors) > 0:
+        print "\n=== Failed elements ==="
+        for err in errors:
+            print_error_info(err)
+
 def main():
     out_folder = sys.argv[1]
     bookmarks = MozillaBookmarks(bookmarks_path)
     music_folder_id = bookmarks.get_folder_id(music_path)
     genres = bookmarks.get_folders(music_folder_id)
-    failed_elements = []
+    errors = []
     for genre in genres:
         genre_dir = create_dir(out_folder, genre.title)
         songs = bookmarks.get_bookmarks(genre.id)
@@ -134,14 +140,11 @@ def main():
                 print "done"
             except subprocess.CalledProcessError as exc:
                 print "error"
-                failed_elements.append((genre.title, song.title, traceback.format_exc(), exc.output))
+                errors.append((genre.title, song.title, traceback.format_exc(), exc.output))
             except Exception as exc:
                 print "error"
-                failed_elements.append((genre.title, song.title, traceback.format_exc(), None))
+                errors.append((genre.title, song.title, traceback.format_exc(), None))
 
-    if len(failed_elements) > 0:
-        print "\n=== Failed elements ==="
-        for fe in failed_elements:
-            print_error_info(fe)
+    print_errors(errors)
 
 main()
