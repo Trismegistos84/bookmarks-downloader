@@ -118,7 +118,7 @@ class SongDownloader:
             return "# Traceback:\n{}\n# Application Output:\n{}".format(traceback.format_exc(), exc.output)
         except Exception as exc:
             print "error"
-            return "# Traceback:\n".format(traceback.format_exc())
+            return "# Traceback:\n{}".format(traceback.format_exc())
 
         return None
 
