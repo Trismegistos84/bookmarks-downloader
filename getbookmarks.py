@@ -12,7 +12,6 @@ import traceback
 bookmarks_path = '/home/wolk/.mozilla/firefox/s3p97vew.default/places.sqlite'
 music_path = ['Bookmarks Toolbar', 'tmp', 'music']
 
-SongTag = collections.namedtuple('SongTag', 'title artist genre comment')
 Bookmark = collections.namedtuple('Bookmark', 'title url')
 BookmarkFolder = collections.namedtuple('BookmarkFolder', 'id title')
 
@@ -52,6 +51,78 @@ class MozillaBookmarks(object):
         return [Bookmark(c[0], c[1]) for c in self.__cursor]
 
 
+SongTag = collections.namedtuple('SongTag', 'title artist genre comment')
+
+class SongDownloader:
+    def __init__(self):
+        pass
+
+
+    def songname_to_filename(self, songname):
+        return songname.replace('/', '_') + '.m4a'
+
+
+    def bookmark_to_songname(self, title):
+        title = title.replace(' - YouTube', '')
+        title = title.replace(u'\u2014', '-') # \u2014 is long dash
+        title = title.replace(u'\u25b6', '') # remove play triangle
+        return title.strip()
+
+
+    def download_song(self, url, output_path):
+        cmd = ['youtube-dl', '-f', 'bestaudio', '-o', output_path, url]
+        subprocess.check_output(cmd, stderr=subprocess.STDOUT)
+
+
+    def tag_song(self, filename, tags, output_dir):
+        output_path = os.path.join(output_dir, filename)
+        if os.path.exists(output_path):
+            os.remove(output_path)
+        cmd = ['ffmpeg', '-i', filename, '-codec', 'copy',
+               '-metadata', 'title=' + tags.title,
+               '-metadata', 'artist=' + tags.artist,
+               '-metadata', 'genre=' + tags.genre,
+               '-metadata', 'comment=' + tags.comment,
+               output_path]
+        subprocess.check_output(cmd, stderr=subprocess.STDOUT)
+        os.remove(filename)
+
+
+    def guess_tags(self, songname, genre):
+        idx = songname.find('-')
+        title = ''
+        artist = ''
+        if idx != -1:
+            title = songname[:idx].strip()
+            artist = songname[idx + 1:].strip()
+
+        return SongTag(title, artist, genre, 'youtube')
+
+
+    def acquire_song(self, song, genre, output_dir):
+        songname = self.bookmark_to_songname(song.title)
+        filename = self.songname_to_filename(songname)
+        self.download_song(song.url, filename)
+        tags = self.guess_tags(songname, genre)
+        self.tag_song(filename, tags, output_dir)
+
+
+    def download(self, song, genre, genre_dir):
+        print "Fetching song " + genre + "/" + song.title + " ...",
+        sys.stdout.flush()
+        try:
+            self.acquire_song(song, genre, genre_dir)
+            print "done"
+        except subprocess.CalledProcessError as exc:
+            print "error"
+            return "# Traceback:\n{}\n# Application Output:\n{}".format(traceback.format_exc(), exc.output)
+        except Exception as exc:
+            print "error"
+            return "# Traceback:\n".format(traceback.format_exc())
+
+        return None
+
+
 def create_dir(base, genre):
     path = os.path.join(base, genre)
     if not os.path.exists(path):
@@ -59,60 +130,11 @@ def create_dir(base, genre):
 
     return path
 
-def songname_to_filename(songname):
-    return songname.replace('/', '_') + '.m4a'
-
-
-def clean_songname(title):
-    title = title.replace(' - YouTube', '')
-    title = title.replace(u'\u2014', '-') # \u2014 is long dash
-    title = title.replace(u'\u25b6', '') # remove play triangle
-    return title.strip()
-
-
-def download_song(url, output_path):
-    cmd = ['youtube-dl', '-f', 'bestaudio', '-o', output_path, url]
-    subprocess.check_output(cmd, stderr=subprocess.STDOUT)
-
-
-def tag_song(filename, tags, output_dir):
-    output_path = os.path.join(output_dir, filename)
-    if os.path.exists(output_path):
-        os.remove(output_path)
-    cmd = ['ffmpeg', '-i', filename, '-codec', 'copy',
-           '-metadata', 'title=' + tags.title,
-           '-metadata', 'artist=' + tags.artist,
-           '-metadata', 'genre=' + tags.genre,
-           '-metadata', 'comment=' + tags.comment,
-           output_path]
-    subprocess.check_output(cmd, stderr=subprocess.STDOUT)
-    os.remove(filename)
-
-
-def guess_tags(songname, genre):
-    idx = songname.find('-')
-    title = ''
-    artist = ''
-    if idx != -1:
-        title = songname[:idx].strip()
-        artist = songname[idx + 1:].strip()
-
-    return SongTag(title, artist, genre, 'youtube')
-
-
-def acquire_song(song, genre, output_dir):
-    songname = clean_songname(song.title)
-    filename = songname_to_filename(songname)
-    download_song(song.url, filename)
-    tags = guess_tags(songname, genre)
-    tag_song(filename, tags, output_dir)
 
 def print_error_info(info):
-    print "# Genre: " + info[0]
-    print "# Title: " + info[1]
-    print "# Traceback: \n" + info[2]
-    if info[3] != None:
-        print "# Application output:\n" + info[3]
+    print "# Folder: " + info[0]
+    print "# Bookmark name: " + info[1]
+    print info[2]
     print
 
 
@@ -122,28 +144,21 @@ def print_errors(errors):
         for err in errors:
             print_error_info(err)
 
+
 def main():
     out_folder = sys.argv[1]
     bookmarks = MozillaBookmarks(bookmarks_path)
     music_folder_id = bookmarks.get_folder_id(music_path)
     genres = bookmarks.get_folders(music_folder_id)
+    downloader = SongDownloader()
     errors = []
     for genre in genres:
         genre_dir = create_dir(out_folder, genre.title)
         songs = bookmarks.get_bookmarks(genre.id)
-        failed = False
         for song in songs:
-            print "Fetching song " + genre.title + "/" + song.title + " ...",
-            sys.stdout.flush()
-            try:
-                acquire_song(song, genre.title, genre_dir)
-                print "done"
-            except subprocess.CalledProcessError as exc:
-                print "error"
-                errors.append((genre.title, song.title, traceback.format_exc(), exc.output))
-            except Exception as exc:
-                print "error"
-                errors.append((genre.title, song.title, traceback.format_exc(), None))
+            err = downloader.download(song, genre.title, genre_dir)
+            if err is not None:
+                errors.append((genre.title, song.title, err))
 
     print_errors(errors)
 
