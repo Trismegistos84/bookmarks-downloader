@@ -63,9 +63,8 @@ class SongDownloader:
 
 
     def bookmark_to_songname(self, title):
+        title = title.encode('ascii', 'ignore')
         title = title.replace(' - YouTube', '')
-        title = title.replace(u'\u2014', '-') # \u2014 is long dash
-        title = title.replace(u'\u25b6', '') # remove play triangle
         return title.strip()
 
 
@@ -108,7 +107,7 @@ class SongDownloader:
 
 
     def download(self, song, genre, genre_dir):
-        print "Fetching song " + genre + "/" + song.title + " ...",
+        print "Fetching song " + genre.encode('ascii', 'ignore') + "/" + song.title.encode('ascii', 'ignore') + " ...",
         sys.stdout.flush()
         try:
             self.acquire_song(song, genre, genre_dir)
