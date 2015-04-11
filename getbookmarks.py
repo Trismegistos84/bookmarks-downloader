@@ -131,9 +131,9 @@ def create_dir(base, genre):
 
 
 def print_error_info(info):
-    print "# Folder: " + info[0]
-    print "# Bookmark name: " + info[1]
-    print info[2]
+    print "# Folder: " + info[0].encode('ascii', 'ignore')
+    print "# Bookmark name: " + info[1].encode('ascii', 'ignore')
+    print info[2].encode('ascii', 'ignore')
     print
 
 
