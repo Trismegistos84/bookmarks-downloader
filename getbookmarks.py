@@ -7,6 +7,7 @@ import sys
 import subprocess
 import os
 import traceback
+import re
 
 
 bookmarks_path = '/home/wolk/.mozilla/firefox/s3p97vew.default/places.sqlite'
@@ -87,7 +88,7 @@ class SongDownloader:
         os.remove(filename)
 
 
-    def guess_tags(self, songname, genre):
+    def guess_tags(self, songname, url, genre):
         idx = songname.find('-')
         title = ''
         artist = ''
@@ -95,31 +96,38 @@ class SongDownloader:
             title = songname[:idx].strip()
             artist = songname[idx + 1:].strip()
 
-        return SongTag(title, artist, genre, 'youtube')
+        servername = get_server_name(url).encode('ascii', 'ignore')
+        return SongTag(title, artist, genre, servername)
 
 
     def acquire_song(self, song, genre, output_dir):
         songname = self.bookmark_to_songname(song.title)
         filename = self.songname_to_filename(songname)
         self.download_song(song.url, filename)
-        tags = self.guess_tags(songname, genre)
+        tags = self.guess_tags(songname, song.url, genre)
         self.tag_song(filename, tags, output_dir)
 
 
     def download(self, song, genre, genre_dir):
-        print "Fetching song " + genre.encode('ascii', 'ignore') + "/" + song.title.encode('ascii', 'ignore') + " ...",
         sys.stdout.flush()
         try:
             self.acquire_song(song, genre, genre_dir)
-            print "done"
         except subprocess.CalledProcessError as exc:
-            print "error"
             return "# Traceback:\n{}\n# Application Output:\n{}".format(traceback.format_exc(), exc.output)
         except Exception as exc:
-            print "error"
             return "# Traceback:\n{}".format(traceback.format_exc())
 
         return None
+
+
+'''
+Get server name from full url.
+e.g. 'http://youtube.com/zzz' will parse to 'youtube.com'
+'''
+def get_server_name(url):
+    regex = re.compile('.*?://(.*?)/.*')
+    matched = regex.match(url)
+    return matched.group(1)
 
 
 def create_dir(base, genre):
@@ -155,8 +163,12 @@ def main():
         genre_dir = create_dir(out_folder, genre.title)
         songs = bookmarks.get_bookmarks(genre.id)
         for song in songs:
+            print "Fetching " + genre.title.encode('ascii', 'ignore') + "/" + song.title.encode('ascii', 'ignore') + " ...",
             err = downloader.download(song, genre.title, genre_dir)
-            if err is not None:
+            if err is None:
+                print "done"
+            else:
+                print "error"
                 errors.append((genre.title, song.title, err))
 
     print_errors(errors)
