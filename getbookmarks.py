@@ -29,6 +29,9 @@ class MozillaBookmarks(object):
     def __del__(self):
         self.__connection.close()
 
+    '''
+    @path -- list representing path e.g ['Bookmarks Toolbar', 'tmp', 'music']
+    '''
     def get_folder_id(self, path):
         query = 'SELECT id from moz_bookmarks where title = ? and parent = ? and type = 2'
         parentid = MozillaBookmarks.__ROOT_PARENT_ID
@@ -50,6 +53,34 @@ class MozillaBookmarks(object):
                    WHERE moz_bookmarks.parent = ?'''
         self.__cursor.execute(query, (parentid,))
         return [Bookmark(c[0], c[1]) for c in self.__cursor]
+
+    '''
+    @path -- list representing path e.g ['Bookmarks Toolbar', 'tmp', 'music']
+    '''
+    def walk(self, path):
+        rootid = self.get_folder_id(path)
+        bookmarks = self.get_bookmarks(rootid)
+        folders = self.get_folders(rootid)
+
+        result = [([], folders, bookmarks)]
+        foldersToVisit = list(result)
+
+        for folder in foldersToVisit:
+            curpath = folder[0]
+            for subfolder in folder[1]:
+                subfolderpath = list(curpath)
+                subfolderpath.append(subfolder.title)
+
+                subfolderfolders = self.get_folders(subfolder.id)
+
+                subfolderbookmarks = self.get_bookmarks(subfolder.id)
+
+                subfolderentry = (subfolderpath, subfolderfolders, subfolderbookmarks)
+
+                result.append(subfolderentry)
+                foldersToVisit.append(subfolderentry)
+
+        return result
 
 
 SongTag = collections.namedtuple('SongTag', 'title artist genre comment')
@@ -174,3 +205,4 @@ def main():
     print_errors(errors)
 
 main()
+
