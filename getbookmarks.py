@@ -138,24 +138,12 @@ class SongDownloader:
         return SongTag(title, artist, genre, servername)
 
 
-    def acquire_song(self, song, bookmarkpath, outdir):
+    def download(self, song, bookmarkpath, outdir):
         songname = self.clean_bookmark_name(song.title)
         filename = self.songname_to_filename(songname)
         self.download_song(song.url, filename)
         tags = self.guess_tags(songname, song.url, bookmarkpath)
         self.tag_song(filename, tags, outdir)
-
-
-    def download(self, song, bookmarkpath, outdir):
-        sys.stdout.flush()
-        try:
-            self.acquire_song(song, bookmarkpath, outdir)
-        except subprocess.CalledProcessError as exc:
-            msg = "# Traceback:\n{}\n# Application Output:\n{}".format(traceback.format_exc(), exc.output)
-            raise Exception(msg)
-        except Exception as exc:
-            msg = "# Traceback:\n{}".format(traceback.format_exc())
-            raise Exception(msg)
 
 
 '''
@@ -175,7 +163,11 @@ def create_dir(dir):
 def print_error_info(info):
     print "# Folder:", [i.encode('ascii', 'ignore') for i in info[0]]
     print "# Bookmark name: " + info[1].title.encode('ascii', 'ignore')
-    print info[2]
+    if isinstance(info[2], subprocess.CalledProcessError):
+        msg = "# Command: {}\n# Application Output:\n{}".format(info[2].cmd, info[2].output)
+        print msg
+    else:
+        print info[2]
     print
 
 
@@ -199,6 +191,7 @@ def main():
         outdir = os.path.join(out_folder, *fspath)
         create_dir(outdir)
         for bookmark in bookmarks:
+            sys.stdout.flush()
             print "Fetching " + bookmark.title.encode('ascii', 'ignore') + " ...",
             try:
                 downloader.acquire_song(bookmark, bookmarkpath, outdir)
