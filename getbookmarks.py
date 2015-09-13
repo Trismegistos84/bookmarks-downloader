@@ -63,9 +63,9 @@ class MozillaBookmarks(object):
         folders = self.get_folders(rootid)
 
         result = [([], folders, bookmarks)]
-        foldersToVisit = list(result)
+        folders_to_visit = list(result)
 
-        for folder in foldersToVisit:
+        for folder in folders_to_visit:
             curpath = folder[0]
             for subfolder in folder[1]:
                 subfolderpath = list(curpath)
@@ -78,7 +78,7 @@ class MozillaBookmarks(object):
                 subfolderentry = (subfolderpath, subfolderfolders, subfolderbookmarks)
 
                 result.append(subfolderentry)
-                foldersToVisit.append(subfolderentry)
+                folders_to_visit.append(subfolderentry)
 
         return result
 
@@ -86,15 +86,11 @@ class MozillaBookmarks(object):
 SongTag = collections.namedtuple('SongTag', 'title artist genre comment')
 
 class SongDownloader:
-    def __init__(self):
-        pass
-
 
     def songname_to_filename(self, songname):
-        return songname.replace('/', '_') + '.m4a'
+        return make_legal_path_component(songname) + '.m4a'
 
-
-    def bookmark_to_songname(self, title):
+    def clean_bookmark_name(self, title):
         title = title.encode('ascii', 'ignore')
         title = title.replace(' - YouTube', '')
         return title.strip()
@@ -105,50 +101,61 @@ class SongDownloader:
         subprocess.check_output(cmd, stderr=subprocess.STDOUT)
 
 
-    def tag_song(self, filename, tags, output_dir):
-        output_path = os.path.join(output_dir, filename)
+    def tag_song(self, filename, tags, outdir):
+        output_path = os.path.join(outdir, filename)
         if os.path.exists(output_path):
             os.remove(output_path)
-        cmd = ['ffmpeg', '-i', filename, '-codec', 'copy',
-               '-metadata', 'title=' + tags.title,
-               '-metadata', 'artist=' + tags.artist,
-               '-metadata', 'genre=' + tags.genre,
-               '-metadata', 'comment=' + tags.comment,
-               output_path]
+        cmd = ['ffmpeg', '-i', filename, '-codec', 'copy']
+
+        if tags.title is not None :
+            cmd = cmd + ['-metadata', 'title=' + tags.title]
+        if tags.artist is not None:
+            cmd = cmd + ['-metadata', 'artist=' + tags.artist]
+        if tags.genre is not None:
+            cmd = cmd + ['-metadata', 'genre=' + tags.genre]
+        if tags.comment is not None:
+            cmd = cmd + ['-metadata', 'comment=' + tags.comment]
+
+        cmd = cmd + [output_path]
+
         subprocess.check_output(cmd, stderr=subprocess.STDOUT)
         os.remove(filename)
 
 
-    def guess_tags(self, songname, url, genre):
+    def guess_tags(self, songname, url, bookmarkpath):
         idx = songname.find('-')
-        title = ''
-        artist = ''
+        title = None
+        artist = None
         if idx != -1:
             title = songname[:idx].strip()
             artist = songname[idx + 1:].strip()
 
         servername = get_server_name(url).encode('ascii', 'ignore')
+
+        genre = None
+        if len(bookmarkpath) > 0:
+            genre = bookmarkpath[0]
         return SongTag(title, artist, genre, servername)
 
 
-    def acquire_song(self, song, genre, output_dir):
-        songname = self.bookmark_to_songname(song.title)
+    def acquire_song(self, song, bookmarkpath, outdir):
+        songname = self.clean_bookmark_name(song.title)
         filename = self.songname_to_filename(songname)
         self.download_song(song.url, filename)
-        tags = self.guess_tags(songname, song.url, genre)
-        self.tag_song(filename, tags, output_dir)
+        tags = self.guess_tags(songname, song.url, bookmarkpath)
+        self.tag_song(filename, tags, outdir)
 
 
-    def download(self, song, genre, genre_dir):
+    def download(self, song, bookmarkpath, outdir):
         sys.stdout.flush()
         try:
-            self.acquire_song(song, genre, genre_dir)
+            self.acquire_song(song, bookmarkpath, outdir)
         except subprocess.CalledProcessError as exc:
-            return "# Traceback:\n{}\n# Application Output:\n{}".format(traceback.format_exc(), exc.output)
+            msg = "# Traceback:\n{}\n# Application Output:\n{}".format(traceback.format_exc(), exc.output)
+            raise Exception(msg)
         except Exception as exc:
-            return "# Traceback:\n{}".format(traceback.format_exc())
-
-        return None
+            msg = "# Traceback:\n{}".format(traceback.format_exc())
+            raise Exception(msg)
 
 
 '''
@@ -161,18 +168,14 @@ def get_server_name(url):
     return matched.group(1)
 
 
-def create_dir(base, genre):
-    path = os.path.join(base, genre)
-    if not os.path.exists(path):
-        os.mkdir(path)
-
-    return path
-
+def create_dir(dir):
+    if not os.path.exists(dir):
+        os.makedirs(dir)
 
 def print_error_info(info):
-    print "# Folder: " + info[0].encode('ascii', 'ignore')
-    print "# Bookmark name: " + info[1].encode('ascii', 'ignore')
-    print info[2].encode('ascii', 'ignore')
+    print "# Folder:", [i.encode('ascii', 'ignore') for i in info[0]]
+    print "# Bookmark name: " + info[1].title.encode('ascii', 'ignore')
+    print info[2]
     print
 
 
@@ -182,25 +185,27 @@ def print_errors(errors):
         for err in errors:
             print_error_info(err)
 
+def make_legal_path_component(path):
+    return path.replace('/', '_')
 
 def main():
     out_folder = sys.argv[1]
-    bookmarks = MozillaBookmarks(bookmarks_path)
-    music_folder_id = bookmarks.get_folder_id(music_path)
-    genres = bookmarks.get_folders(music_folder_id)
+    bookmarkAccess = MozillaBookmarks(bookmarks_path)
     downloader = SongDownloader()
     errors = []
-    for genre in genres:
-        genre_dir = create_dir(out_folder, genre.title)
-        songs = bookmarks.get_bookmarks(genre.id)
-        for song in songs:
-            print "Fetching " + genre.title.encode('ascii', 'ignore') + "/" + song.title.encode('ascii', 'ignore') + " ...",
-            err = downloader.download(song, genre.title, genre_dir)
-            if err is None:
+
+    for bookmarkpath, folders, bookmarks in bookmarkAccess.walk(music_path):
+        fspath = [make_legal_path_component(i) for i in bookmarkpath]
+        outdir = os.path.join(out_folder, *fspath)
+        create_dir(outdir)
+        for bookmark in bookmarks:
+            print "Fetching " + bookmark.title.encode('ascii', 'ignore') + " ...",
+            try:
+                downloader.acquire_song(bookmark, bookmarkpath, outdir)
                 print "done"
-            else:
+            except Exception as e:
                 print "error"
-                errors.append((genre.title, song.title, err))
+                errors.append((bookmarkpath, bookmark, e))
 
     print_errors(errors)
 
