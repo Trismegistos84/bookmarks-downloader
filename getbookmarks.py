@@ -8,6 +8,7 @@ import subprocess
 import os
 import traceback
 import re
+import shutil
 
 
 bookmarks_path = '/home/wolk/.mozilla/firefox/s3p97vew.default/places.sqlite'
@@ -143,7 +144,13 @@ class SongDownloader:
         filename = self.songname_to_filename(songname)
         self.download_song(song.url, filename)
         tags = self.guess_tags(songname, song.url, bookmarkpath)
-        self.tag_song(filename, tags, outdir)
+        try:
+            self.tag_song(filename, tags, outdir)
+        except Exception as excp:
+            outfile = os.path.join(outdir, filename)
+            shutil.copyfile(filename, outfile)
+            raise Exception("Unable to tag song " + songname)
+
 
 
 '''
@@ -161,19 +168,19 @@ def create_dir(dir):
         os.makedirs(dir)
 
 def print_error_info(info):
-    print "# Folder:", [i.encode('ascii', 'ignore') for i in info[0]]
-    print "# Bookmark name: " + info[1].title.encode('ascii', 'ignore')
+    print("# Folder:", [i.encode('ascii', 'ignore') for i in info[0]])
+    print("# Bookmark name: " + info[1].title.encode('ascii', 'ignore'))
     if isinstance(info[2], subprocess.CalledProcessError):
         msg = "# Command: {}\n# Application Output:\n{}".format(info[2].cmd, info[2].output)
-        print msg
+        print(msg)
     else:
-        print info[2]
-    print
+        print(info[2])
+    print("")
 
 
 def print_errors(errors):
     if len(errors) > 0:
-        print "\n=== Failed elements ==="
+        print("\n=== Failed elements ===")
         for err in errors:
             print_error_info(err)
 
@@ -194,10 +201,10 @@ def main():
             sys.stdout.flush()
             print "Fetching " + bookmark.title.encode('ascii', 'ignore') + " ...",
             try:
-                downloader.acquire_song(bookmark, bookmarkpath, outdir)
-                print "done"
+                downloader.download(bookmark, bookmarkpath, outdir)
+                print("done")
             except Exception as e:
-                print "error"
+                print("error")
                 errors.append((bookmarkpath, bookmark, e))
 
     print_errors(errors)
