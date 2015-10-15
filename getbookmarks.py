@@ -101,12 +101,11 @@ class SongDownloader:
         cmd = ['youtube-dl', '-f', 'bestaudio', '-o', output_path, url]
         subprocess.check_output(cmd, stderr=subprocess.STDOUT)
 
-
-    def tag_song(self, filename, tags, outdir):
-        output_path = os.path.join(outdir, filename)
+    def __tagWithCopyingStream(self, file_to_tag, tags, outdir):
+        output_path = os.path.join(outdir, os.path.split(file_to_tag)[1])
         if os.path.exists(output_path):
             os.remove(output_path)
-        cmd = ['ffmpeg', '-i', filename, '-codec', 'copy']
+        cmd = ['ffmpeg', '-i', file_to_tag, '-codec', 'copy']
 
         if tags.title is not None :
             cmd = cmd + ['-metadata', 'title=' + tags.title]
@@ -119,8 +118,44 @@ class SongDownloader:
 
         cmd = cmd + [output_path]
 
-        subprocess.check_output(cmd, stderr=subprocess.STDOUT)
-        os.remove(filename)
+        try:
+            subprocess.check_output(cmd, stderr=subprocess.STDOUT)
+        except Exception as e:
+            os.remove(output_path)
+            raise
+
+
+    def __tagWithRecodingToMp3(self, file_to_tag, tags, outdir):
+        output_path = os.path.join(outdir, os.path.split(file_to_tag)[1])
+        output_path = os.path.splitext(output_path)[0] + '.mp3'
+
+        if os.path.exists(output_path):
+            os.remove(output_path)
+        cmd = ['ffmpeg', '-i', file_to_tag, '-codec', 'mp3']
+
+        if tags.title is not None :
+            cmd = cmd + ['-metadata', 'title=' + tags.title]
+        if tags.artist is not None:
+            cmd = cmd + ['-metadata', 'artist=' + tags.artist]
+        if tags.genre is not None:
+            cmd = cmd + ['-metadata', 'genre=' + tags.genre]
+        if tags.comment is not None:
+            cmd = cmd + ['-metadata', 'comment=' + tags.comment]
+
+        cmd = cmd + [output_path]
+
+        try:
+            subprocess.check_output(cmd, stderr=subprocess.STDOUT)
+        except Exception as e:
+            os.remove(output_path)
+            raise
+
+
+    def tag_song(self, file_to_tag, tags, outdir):
+        try:
+            self.__tagWithCopyingStream(file_to_tag, tags, outdir)
+        except Exception as excp1:
+            self.__tagWithRecodingToMp3(file_to_tag, tags, outdir)
 
 
     def guess_tags(self, songname, url, bookmarkpath):
@@ -142,14 +177,18 @@ class SongDownloader:
     def download(self, song, bookmarkpath, outdir):
         songname = self.clean_bookmark_name(song.title)
         filename = self.songname_to_filename(songname)
-        self.download_song(song.url, filename)
+        downloaded_file = os.path.join('/dev/shm', filename)
+        self.download_song(song.url, downloaded_file)
         tags = self.guess_tags(songname, song.url, bookmarkpath)
         try:
-            self.tag_song(filename, tags, outdir)
+            self.tag_song(downloaded_file, tags, outdir)
         except Exception as excp:
             outfile = os.path.join(outdir, filename)
-            shutil.copyfile(filename, outfile)
+            shutil.move(downloaded_file, outfile)
             raise Exception("Unable to tag song " + songname)
+        finally:
+            if os.path.exists(downloaded_file):
+                os.remove(downloaded_file)
 
 
 
