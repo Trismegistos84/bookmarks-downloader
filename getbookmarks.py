@@ -128,8 +128,8 @@ class SongDownloader:
         title = None
         artist = None
         if idx != -1:
-            title = songname[:idx].strip()
-            artist = songname[idx + 1:].strip()
+            artist = songname[:idx].strip()
+            title = songname[idx + 1:].strip()
 
         servername = get_server_name(url).encode('ascii', 'ignore')
 
