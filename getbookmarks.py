@@ -87,15 +87,10 @@ class MozillaBookmarks(object):
 SongTag = collections.namedtuple('SongTag', 'title artist genre comment')
 
 class SongDownloader:
-
-    def songname_to_filename(self, songname):
-        return make_legal_path_component(songname) + '.m4a'
-
     def clean_bookmark_name(self, title):
         title = title.encode('ascii', 'ignore')
         title = title.replace(' - YouTube', '')
         return title.strip()
-
 
     def download_song(self, url, output_path):
         cmd = ['youtube-dl', '-f', 'bestaudio', '-o', output_path, url]
@@ -105,25 +100,8 @@ class SongDownloader:
         output_path = os.path.join(outdir, os.path.split(file_to_tag)[1])
         if os.path.exists(output_path):
             os.remove(output_path)
-        cmd = ['ffmpeg', '-i', file_to_tag, '-codec', 'copy']
 
-        if tags.title is not None :
-            cmd = cmd + ['-metadata', 'title=' + tags.title]
-        if tags.artist is not None:
-            cmd = cmd + ['-metadata', 'artist=' + tags.artist]
-        if tags.genre is not None:
-            cmd = cmd + ['-metadata', 'genre=' + tags.genre]
-        if tags.comment is not None:
-            cmd = cmd + ['-metadata', 'comment=' + tags.comment]
-
-        cmd = cmd + [output_path]
-
-        try:
-            subprocess.check_output(cmd, stderr=subprocess.STDOUT)
-        except Exception as e:
-            os.remove(output_path)
-            raise
-
+        self.__launchFFMPEG(file_to_tag, tags, output_path, 'copy')
 
     def __tagWithRecodingToMp3(self, file_to_tag, tags, outdir):
         output_path = os.path.join(outdir, os.path.split(file_to_tag)[1])
@@ -131,7 +109,11 @@ class SongDownloader:
 
         if os.path.exists(output_path):
             os.remove(output_path)
-        cmd = ['ffmpeg', '-i', file_to_tag, '-codec', 'mp3']
+
+        self.__launchFFMPEG(file_to_tag, tags, output_path, 'mp3')
+
+    def __launchFFMPEG(self, file_to_tag, tags, output_path, codec):
+        cmd = ['ffmpeg', '-i', file_to_tag, '-codec', codec]
 
         if tags.title is not None :
             cmd = cmd + ['-metadata', 'title=' + tags.title]
@@ -149,7 +131,6 @@ class SongDownloader:
         except Exception as e:
             os.remove(output_path)
             raise
-
 
     def tag_song(self, file_to_tag, tags, outdir):
         try:
@@ -176,7 +157,7 @@ class SongDownloader:
 
     def download(self, song, bookmarkpath, outdir):
         songname = self.clean_bookmark_name(song.title)
-        filename = self.songname_to_filename(songname)
+        filename = make_legal_path_component(songname) + '.m4a'
         downloaded_file = os.path.join('/dev/shm', filename)
         self.download_song(song.url, downloaded_file)
         tags = self.guess_tags(songname, song.url, bookmarkpath)
@@ -231,20 +212,26 @@ def main():
     bookmarkAccess = MozillaBookmarks(bookmarks_path)
     downloader = SongDownloader()
     errors = []
+    breakmain = False
 
     for bookmarkpath, folders, bookmarks in bookmarkAccess.walk(music_path):
+        if breakmain:
+            break
+
         fspath = [make_legal_path_component(i) for i in bookmarkpath]
         outdir = os.path.join(out_folder, *fspath)
         create_dir(outdir)
         for bookmark in bookmarks:
-            sys.stdout.flush()
             print "Fetching " + bookmark.title.encode('ascii', 'ignore') + " ...",
+            sys.stdout.flush()
             try:
                 downloader.download(bookmark, bookmarkpath, outdir)
                 print("done")
             except Exception as e:
                 print("error")
                 errors.append((bookmarkpath, bookmark, e))
+                breakmain = True
+                break
 
     print_errors(errors)
 
