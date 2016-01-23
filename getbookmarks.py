@@ -93,7 +93,7 @@ class SongDownloader:
         return title.strip()
 
     def download_song(self, url, output_path):
-        cmd = ['youtube-dl', '-f', 'bestaudio', '-o', output_path, url]
+        cmd = ['youtube-dl','--no-playlist' , '-f', 'bestaudio', '-o', output_path, url]
         subprocess.check_output(cmd, stderr=subprocess.STDOUT)
 
     def __tagWithCopyingStream(self, file_to_tag, tags, outdir):
